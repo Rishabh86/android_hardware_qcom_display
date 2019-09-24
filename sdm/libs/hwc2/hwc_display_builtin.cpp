@@ -244,7 +244,7 @@ HWC2::Error HWCDisplayBuiltIn::Validate(uint32_t *out_num_types, uint32_t *out_n
 
   if (layer_set_.empty()) {
     // Avoid flush for Command mode panel.
-    flush_ = !(IsDisplayCommandMode() && active_secure_sessions_[kSecureDisplay]);
+    flush_ = !client_connected_;
     validated_ = true;
     return status;
   }
@@ -874,13 +874,10 @@ DisplayError HWCDisplayBuiltIn::ControlIdlePowerCollapse(bool enable, bool synch
 }
 
 DisplayError HWCDisplayBuiltIn::SetDynamicDSIClock(uint64_t bitclk) {
-  {
-    SEQUENCE_WAIT_SCOPE_LOCK(HWCSession::locker_[type_]);
-    DisplayError error = display_intf_->SetDynamicDSIClock(bitclk);
-    if (error != kErrorNone) {
-      DLOGE(" failed: Clk: %llu Error: %d", bitclk, error);
-      return error;
-    }
+  DisplayError error = display_intf_->SetDynamicDSIClock(bitclk);
+  if (error != kErrorNone) {
+    DLOGE(" failed: Clk: %llu Error: %d", bitclk, error);
+    return error;
   }
 
   callbacks_->Refresh(id_);
@@ -890,7 +887,6 @@ DisplayError HWCDisplayBuiltIn::SetDynamicDSIClock(uint64_t bitclk) {
 }
 
 DisplayError HWCDisplayBuiltIn::GetDynamicDSIClock(uint64_t *bitclk) {
-  SEQUENCE_WAIT_SCOPE_LOCK(HWCSession::locker_[type_]);
   if (display_intf_) {
     return display_intf_->GetDynamicDSIClock(bitclk);
   }

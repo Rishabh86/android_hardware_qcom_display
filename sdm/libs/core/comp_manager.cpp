@@ -541,7 +541,7 @@ DisplayError CompManager::ControlDpps(bool enable) {
   return kErrorNone;
 }
 
-bool CompManager::SetDisplayState(Handle display_ctx, DisplayState state) {
+bool CompManager::SetDisplayState(Handle display_ctx, DisplayState state, int sync_handle) {
   DisplayCompositionContext *display_comp_ctx =
       reinterpret_cast<DisplayCompositionContext *>(display_ctx);
 
@@ -559,8 +559,8 @@ bool CompManager::SetDisplayState(Handle display_ctx, DisplayState state) {
 
   case kStateOn:
   case kStateDoze:
-    // Get active display count.
-    if (powered_on_displays_.size()) {
+    // Setting safe mode if there are multiple displays and one of display is already active.
+    if ((registered_displays_.size() > 1) && powered_on_displays_.size()) {
       safe_mode_ = true;
       DLOGV_IF(kTagCompManager, "safe_mode = %d", safe_mode_);
     }
@@ -579,6 +579,8 @@ bool CompManager::SetDisplayState(Handle display_ctx, DisplayState state) {
   bool inactive = (state == kStateOff) || (state == kStateDozeSuspend);
   UpdateStrategyConstraints(display_comp_ctx->is_primary_panel, inactive);
 
+  resource_intf_->Perform(ResourceInterface::kCmdUpdateSyncHandle,
+                          display_comp_ctx->display_resource_ctx, sync_handle);
   return true;
 }
 
