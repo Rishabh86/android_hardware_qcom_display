@@ -100,7 +100,6 @@ using sde_drm::DRMBlendType;
 using sde_drm::DRMSrcConfig;
 using sde_drm::DRMOps;
 using sde_drm::DRMTopology;
-using sde_drm::DRMPowerMode;
 using sde_drm::DRMSecureMode;
 using sde_drm::DRMSecurityLevel;
 using sde_drm::DRMCscType;
@@ -157,6 +156,9 @@ static void GetDRMFormat(LayerBufferFormat format, uint32_t *drm_format,
       break;
     case kFormatRGB888:
       *drm_format = DRM_FORMAT_BGR888;
+      break;
+    case kFormatBGR888:
+      *drm_format = DRM_FORMAT_RGB888;
       break;
     case kFormatRGB565:
       *drm_format = DRM_FORMAT_BGR565;
@@ -876,6 +878,7 @@ DisplayError HWDeviceDRM::PowerOn(const HWQosData &qos_data, int *release_fence)
   *release_fence = static_cast<int>(release_fence_t);
   DLOGD_IF(kTagDriverConfig, "RELEASE fence created: fd:%d", *release_fence);
   pending_doze_ = false;
+  last_power_mode_ = DRMPowerMode::ON;
 
   return kErrorNone;
 }
@@ -902,6 +905,7 @@ DisplayError HWDeviceDRM::PowerOff(bool teardown) {
     return kErrorHardware;
   }
   pending_doze_ = false;
+  last_power_mode_ = DRMPowerMode::OFF;
 
   return kErrorNone;
 }
@@ -909,7 +913,7 @@ DisplayError HWDeviceDRM::PowerOff(bool teardown) {
 DisplayError HWDeviceDRM::Doze(const HWQosData &qos_data, int *release_fence) {
   DTRACE_SCOPED();
 
-  if (!first_cycle_) {
+  if (first_cycle_ || last_power_mode_ != DRMPowerMode::OFF) {
     pending_doze_ = true;
     return kErrorNone;
   }
@@ -933,6 +937,9 @@ DisplayError HWDeviceDRM::Doze(const HWQosData &qos_data, int *release_fence) {
 
   *release_fence = static_cast<int>(release_fence_t);
   DLOGD_IF(kTagDriverConfig, "RELEASE fence created: fd:%d", *release_fence);
+
+  last_power_mode_ = DRMPowerMode::DOZE;
+
   return kErrorNone;
 }
 
@@ -961,6 +968,7 @@ DisplayError HWDeviceDRM::DozeSuspend(const HWQosData &qos_data, int *release_fe
   *release_fence = static_cast<int>(release_fence_t);
   DLOGD_IF(kTagDriverConfig, "RELEASE fence created: fd:%d", *release_fence);
   pending_doze_ = false;
+  last_power_mode_ = DRMPowerMode::DOZE_SUSPEND;
 
   return kErrorNone;
 }
@@ -1176,10 +1184,13 @@ void HWDeviceDRM::SetupAtomic(HWLayers *hw_layers, bool validate) {
     drm_atomic_intf_->Perform(DRMOps::CONNECTOR_SET_CRTC, token_.conn_id, token_.crtc_id);
     DRMPowerMode power_mode = pending_doze_ ? DRMPowerMode::DOZE : DRMPowerMode::ON;
     drm_atomic_intf_->Perform(DRMOps::CONNECTOR_SET_POWER_MODE, token_.conn_id, power_mode);
+    last_power_mode_ = power_mode;
   } else if (pending_doze_ && !validate) {
     drm_atomic_intf_->Perform(DRMOps::CRTC_SET_ACTIVE, token_.crtc_id, 1);
     drm_atomic_intf_->Perform(DRMOps::CONNECTOR_SET_POWER_MODE, token_.conn_id, DRMPowerMode::DOZE);
     pending_doze_ = false;
+    synchronous_commit_ = true;
+    last_power_mode_ = DRMPowerMode::DOZE;
   }
 
   // Set CRTC mode, only if display config changes
